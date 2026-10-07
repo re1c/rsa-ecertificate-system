@@ -18,10 +18,14 @@ MINIMAL_PDF_BYTES = (
     b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
     b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R >>\nendobj\n"
     b"4 0 obj\n<< /Length 39 >>\nstream\nBT\n/F1 12 Tf\n10 10 Td\n(Sertifikat Asli) Tj\nET\nendstream\nendobj\n"
-    b"xref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000206 00000 n \n"
-    b"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n296\n%%EOF"
+    b"xref\n0 5\n"
+    b"0000000000 65535 f \n"
+    b"0000000009 00000 n \n"
+    b"0000000058 00000 n \n"
+    b"0000000115 00000 n \n"
+    b"0000000202 00000 n \n"
+    b"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n290\n%%EOF"
 )
-
 
 @pytest.fixture
 def sample_png_bytes():
