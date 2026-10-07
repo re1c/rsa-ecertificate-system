@@ -1,6 +1,6 @@
 """
 cert_service.py
-Service Layer untuk Ekstraksi Hash Dokumen dan Injeksi Metadata RSA
+Service Layer untuk Ekstraksi Hash Dokumen dan Penandatanganan Digital RSA
 Mendukung format PDF (via pypdf) dan PNG (via Pillow)
 """
 
@@ -23,7 +23,7 @@ def extract_visual_bytes(file_bytes: bytes, file_type: str) -> bytes:
     Mengekstrak representasi visual dokumen secara deterministik:
     - PDF: Mengikat jumlah halaman, geometri MediaBox, orientasi Rotate,
            aliran konten visual (/Contents), dan data biner gambar (/XObject).
-           Metadata dokumen (/Info) diabaikan agar segel /RSA_Token tidak memicu circular collision.
+           Metadata dokumen (/Info) diabaikan agar token tanda tangan tidak memicu circular collision.
     - PNG: Standardisasi kanonikal ke ruang warna RGBA sebelum ekstraksi biner piksel mentah.
     """
     ext = file_type.lower().lstrip(".")
@@ -32,11 +32,9 @@ def extract_visual_bytes(file_bytes: bytes, file_type: str) -> bytes:
         reader = PdfReader(io.BytesIO(file_bytes))
         visual_stream = bytearray()
 
-        # Ikat struktur dokumen: jumlah halaman
         visual_stream.extend(f"pages:{len(reader.pages)}|".encode("utf-8"))
 
         for idx, page in enumerate(reader.pages):
-            # Ikat geometri dan orientasi kanvas visual
             mediabox_str = str(page.mediabox) if page.mediabox else "default"
             rotate_val = str(page.get("/Rotate", 0))
             visual_stream.extend(f"p{idx}:box:{mediabox_str}:rot:{rotate_val}|".encode("utf-8"))
@@ -71,15 +69,12 @@ def issue_certificate_file(
     file_bytes: bytes,
     file_type: str,
     expiry_date_str: str,
-    e: int,
+    d: int,
     n: int
 ) -> tuple[bytes, dict]:
     """
-    Menerbitkan dokumen bersegel:
-    1. Validasi format tanggal kedaluwarsa (YYYY-MM-DD).
-    2. Ekstrak data visual murni & kalkulasi hash SHA-256.
-    3. Susun payload (hash|expiry_date) lalu enkripsi via rsa_core manual.
-    4. Suntikkan token ke metadata internal file tanpa merusak visual layer.
+    Menerbitkan dokumen bertanda tangan digital:
+    Menggunakan KUNCI PRIVAT (d, n) milik otoritas penerbit.
     """
     try:
         datetime.strptime(expiry_date_str, "%Y-%m-%d")
@@ -91,7 +86,8 @@ def issue_certificate_file(
     visual_hash = compute_sha256(visual_bytes)
     payload = f"{visual_hash}|{expiry_date_str}"
 
-    crypto_result = rsa_core.encrypt_payload(payload, e, n)
+    # Penandatanganan digital: c = m^d mod n
+    crypto_result = rsa_core.encrypt_payload(payload, d, n)
     token = crypto_result["token"]
 
     output_stream = io.BytesIO()
@@ -119,12 +115,12 @@ def issue_certificate_file(
 def verify_certificate_file(
     file_bytes: bytes,
     file_type: str,
-    d: int,
+    e: int,
     n: int
 ) -> dict:
     """
-    Memverifikasi status keabsahan dokumen:
-    Mengembalikan status: UNSIGNED, TAMPERED, EXPIRED, atau VERIFIED.
+    Memverifikasi keabsahan tanda tangan digital dokumen:
+    Menggunakan KUNCI PUBLIK (e, n) milik otoritas penerbit.
     """
     ext = file_type.lower().lstrip(".")
     token = None
@@ -140,29 +136,27 @@ def verify_certificate_file(
     else:
         raise ValueError(f"Tipe file tidak didukung: {file_type}")
 
-    # 1. Pengecekan keberadaan token
     if not token:
         return {
             "status": "UNSIGNED",
-            "message": "Dokumen tidak memiliki token segel resmi.",
+            "message": "Dokumen tidak memiliki segel tanda tangan digital.",
             "is_valid": False,
         }
 
-    # 2. Dekripsi matematis RSA manual
-    dec_result = rsa_core.decrypt_payload(token, d, n)
+    # Verifikasi tanda tangan: m = c^e mod n
+    dec_result = rsa_core.decrypt_payload(token, e, n)
     if dec_result["is_corrupted"] or not dec_result["recovered_text"]:
         return {
             "status": "TAMPERED",
-            "message": "Token rusak atau gagal didekripsi secara matematis.",
+            "message": "Tanda tangan rusak atau tidak valid secara matematis.",
             "is_valid": False,
             "dec_result": dec_result,
         }
 
-    # 3. Parsing aman muatan payload
     try:
         parts = dec_result["recovered_text"].split("|", 1)
         if len(parts) != 2:
-            raise ValueError("Struktur pembatas payload tidak sesuai.")
+            raise ValueError("Struktur payload tanda tangan tidak valid.")
         original_hash, expiry_date_str = parts[0], parts[1]
 
         if len(original_hash) != 64 or not all(c in "0123456789abcdefABCDEF" for c in original_hash):
@@ -170,33 +164,31 @@ def verify_certificate_file(
     except Exception:
         return {
             "status": "TAMPERED",
-            "message": "Format payload di dalam token tidak sesuai spesifikasi.",
+            "message": "Format payload tanda tangan tidak sesuai spesifikasi.",
             "is_valid": False,
             "dec_result": dec_result,
         }
 
-    # 4. Validasi integritas representasi visual
     current_visual_bytes = extract_visual_bytes(file_bytes, ext)
     current_hash = compute_sha256(current_visual_bytes)
 
     if current_hash != original_hash:
         return {
             "status": "TAMPERED",
-            "message": "Konten visual dokumen telah dimodifikasi setelah diterbitkan.",
+            "message": "Konten visual dokumen telah dimodifikasi setelah ditandatangani.",
             "is_valid": False,
             "current_hash": current_hash,
             "original_hash": original_hash,
             "dec_result": dec_result,
         }
 
-    # 5. Validasi masa berlaku berbasis UTC standar
     try:
         exp_date = datetime.strptime(expiry_date_str, "%Y-%m-%d").date()
         today_utc = datetime.now(timezone.utc).date()
         if today_utc > exp_date:
             return {
                 "status": "EXPIRED",
-                "message": f"Dokumen sah secara kriptografis tetapi masa berlaku telah habis sejak {expiry_date_str}.",
+                "message": f"Tanda tangan otentik tetapi masa berlaku dokumen telah habis sejak {expiry_date_str}.",
                 "is_valid": False,
                 "expiry_date": expiry_date_str,
                 "visual_hash": original_hash,
@@ -205,14 +197,14 @@ def verify_certificate_file(
     except ValueError:
         return {
             "status": "TAMPERED",
-            "message": "Format tanggal kedaluwarsa pada token tidak valid.",
+            "message": "Format tanggal kedaluwarsa pada tanda tangan tidak valid.",
             "is_valid": False,
             "dec_result": dec_result,
         }
 
     return {
         "status": "VERIFIED",
-        "message": "Dokumen asli, valid, dan masa berlaku aktif.",
+        "message": "Dokumen asli, tanda tangan sah, dan masa berlaku aktif.",
         "is_valid": True,
         "expiry_date": expiry_date_str,
         "visual_hash": original_hash,
