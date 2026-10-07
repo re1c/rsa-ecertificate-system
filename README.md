@@ -1,37 +1,37 @@
 # RSA-Based E-Certificate Issuance and Verification System
 
-Implementasi sistem penerbitan dan verifikasi keaslian e-sertifikat digital berbasis algoritma kunci publik RSA manual (tanpa pustaka kriptografi eksternal).
+Implementasi sistem penerbitan dan verifikasi keabsahan dokumen e-sertifikat digital berbasis kriptografi kunci publik RSA manual tanpa pustaka kriptografi pihak ketiga.
 
 ## Kelompok 17 - Kriptografi (A)
 * Naswan Nashir Ramadhan (5025231246)
 * Alfianz Risqia Ilahi Loven Kary (5025241164)
 * Az Zahrra Tasya Adelia (5027241087)
 
-## Arsitektur Sistem
-Sistem menggunakan pendekatan *single verifiable document* dengan menyematkan token kriptografi ke dalam metadata internal berkas (`.pdf` / `.png`) tanpa mengubah representasi visualnya.
+## Struktur Modul Sistem
+* `rsa_core.py`: Modul kalkulasi matematika RSA manual (Extended Euclidean Algorithm, eksponensiasi modular square-and-multiply, dan penanganan blok byte).
+* `cert_service.py`: Service pengekstraksi representasi visual dokumen PDF/PNG dan injeksi segel token metadata.
+* `app.py`: Kerangka antarmuka pengguna berbasis Streamlit.
+* `tests/`: Kumpulan 20 skenario unit testing otomatis.
 
-1. **Issuer**:
-   - Menghitung ringkasan SHA-256 dari konten visual berkas final.
-   - Menggabungkan hash visual dengan batas waktu kedaluwarsa (`payload = hash + "|" + expired`).
-   - Mengenkripsi payload secara manual menggunakan kunci RSA menjadi `rsa_token`.
-   - Menyuntikkan `rsa_token` ke metadata internal dokumen (`Document Info` pada PDF / `tEXt chunk` pada PNG).
-2. **Verifier**:
-   - Mengekstrak `rsa_token` dari metadata berkas yang diunggah.
-   - Mendekripsi `rsa_token` secara manual untuk memulihkan hash asli dan batas kedaluwarsa.
-   - Menghitung ulang hash visual dari berkas yang diunggah.
-   - Memvalidasi integritas visual dan tanggal kedaluwarsa secara terprogram (status: **VERIFIED**, **TAMPERED**, **EXPIRED**, atau **UNSIGNED**).
+## Panduan Menjalankan Sistem
 
-## Spesifikasi API Modul Inti (`rsa_core.py`)
-Modul ini siap diintegrasikan langsung ke antarmuka aplikasi (`app.py`):
+1. Persiapan virtual environment dan dependensi:
+```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
 
-* `generate_keypair(p: int, q: int, preferred_e: int = None) -> dict`
-  - Mengembalikan parameter: `{"p", "q", "n", "totient", "e", "d", "k"}`
-* `encrypt_payload(payload_str: str, e: int, n: int) -> dict`
-  - Mengembalikan struktur: `{"token", "plain_blocks", "cipher_blocks", "chunk_size"}`
-* `decrypt_payload(token_str: str, d: int, n: int) -> dict`
-  - Mengembalikan hasil: `{"recovered_text", "decrypted_blocks", "is_corrupted"}`
-
-## Eksekusi Pengujian Lokal
+2. Menjalankan pengujian otomatis:
 ```bash
 pytest -v
 ```
+
+3. Menjalankan aplikasi web:
+```bash
+streamlit run app.py
+```
+
+## Pembagian Peran Lanjutan
+* **Frontend UI (`app.py`)**: Pengembangan estetika antarmuka, penataan tata letak kartu status, perapian tabel visualisasi blok RSA, dan pratinjau dokumen.
+* **Laporan & Sampel Berkas**: Penyusunan laporan resmi pengujian matematis serta penyiapan sampel dokumen sertifikat di folder `samples/` untuk bahan demonstrasi.
