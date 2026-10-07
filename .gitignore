@@ -1,17 +1,40 @@
 # Byte-compiled / optimized
 __pycache__/
 *.py[cod]
+*$py.class
 
 # Virtual environment
 .venv/
+env/
 venv/
+ENV/
 
-# Testing cache
+# Testing & Coverage
 .pytest_cache/
 .coverage
+htmlcov/
 
-# IDE & OS
+# Editor / IDE / OS
 .vscode/
 .idea/
+*.swp
 .DS_Store
 Thumbs.db
+
+# Streamlit secrets (lacak config.toml, abaikan kredensial rahasia)
+.streamlit/secrets.toml
+
+# Cryptographic Keys & Sensitive Exports
+*.pem
+*.key
+*.pub
+*.priv
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Runtime Generated Certificate Outputs
+*_signed.*
+sealed_*.*
+*.issued.*
