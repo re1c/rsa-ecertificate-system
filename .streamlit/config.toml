@@ -8,3 +8,6 @@ maxUploadSize = 50
 
 [client]
 showErrorDetails = "stacktrace"
+
+[theme]
+primaryColor = "#1d4ed8"
