@@ -7,13 +7,15 @@ Fitur UI:
   - Panel edukasi: tahapan pembangkitan kunci dan perhitungan modular eksponensiasi per blok
     (m_i -> c_i saat penerbitan, c_i -> m_i saat verifikasi).
   - Pratinjau dokumen (PNG / PDF) sebelum & sesudah penandatanganan / verifikasi.
+  - Pembangkit bilangan prima acak pada UI memanfaatkan pengujian rsa_core.is_prime().
   - Hasil disimpan di st.session_state sehingga tidak hilang saat tombol unduh ditekan.
 
-Backend (rsa_core.py, cert_service.py) dipakai apa adanya.
+Backend (rsa_core.py, cert_service.py) murni tanpa library kriptografi.
 """
 
 import html
 import io
+import random
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -265,6 +267,19 @@ def apply_preset(p: int, q: int, e: str):
     st.session_state["kp_p"], st.session_state["kp_q"], st.session_state["kp_e"] = p, q, e
 
 
+def apply_random_primes():
+    """Mencari pasangan bilangan prima p dan q acak valid memanfaatkan uji rsa_core.is_prime()."""
+    while True:
+        p = random.randrange(1001, 5000, 2)
+        if rsa_core.is_prime(p):
+            break
+    while True:
+        q = random.randrange(1001, 5000, 2)
+        if q != p and rsa_core.is_prime(q):
+            break
+    st.session_state["kp_p"], st.session_state["kp_q"], st.session_state["kp_e"] = p, q, ""
+
+
 # ----------------------------------------------------------------------------
 # Sidebar
 # ----------------------------------------------------------------------------
@@ -308,13 +323,19 @@ with tab_keys:
     col_in, col_out = st.columns([1, 1.6], gap="large")
 
     with col_in:
-        st.caption("Masukkan dua bilangan prima, atau pakai contoh dari materi kuliah.")
-        b1, b2 = st.columns(2)
+        st.caption("Gunakan nilai acak, masukkan sendiri, atau pilih contoh materi.")
+        b1, b2, b3 = st.columns(3)
         b1.button("Contoh materi", on_click=apply_preset, args=(47, 71, "79"), width="stretch", help="p=47, q=71, e=79 (contoh Alice di slide)")
-        b2.button("Bawaan", on_click=apply_preset, args=(1009, 1013, ""), width="stretch", help="p=1009, q=1013, e otomatis")
+        b2.button("Bawaan", on_click=apply_preset, args=(1009, 1013, ""), width="stretch", help="Kembali ke nilai awal p=1009, q=1013")
+        b3.button("Acak baru", on_click=apply_random_primes, width="stretch", help="Pilih dua bilangan prima p dan q baru secara acak")
         st.number_input("Bilangan prima p", min_value=11, step=1, key="kp_p")
         st.number_input("Bilangan prima q", min_value=11, step=1, key="kp_q")
-        st.text_input("Eksponen publik e (opsional, kosong = otomatis)", key="kp_e")
+        st.text_input(
+            "Eksponen publik e (opsional, kosong = otomatis)",
+            placeholder="65537",
+            key="kp_e",
+            help="Kosongkan untuk otomatis menggunakan eksponen standar 65537 (atau nilai relatif prima terkecil)."
+        )
         if st.button("Bangkitkan kunci otoritas", type="primary", width="stretch"):
             try:
                 p, q = int(st.session_state["kp_p"]), int(st.session_state["kp_q"])
@@ -630,3 +651,5 @@ _pills = "".join(
     f'<div class="step-pill {"done" if d else ""}"><span class="dot">{"✔" if d else i + 1}</span>{lbl}</div>'
     for i, (d, lbl) in enumerate(zip(_done, ["Bangkitkan kunci", "Terbitkan & tandatangani", "Verifikasi dokumen"])))
 stepper_slot.markdown(f'<div class="stepper">{_pills}</div>', unsafe_allow_html=True)
+
+
