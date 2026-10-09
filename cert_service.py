@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 from pypdf import PdfReader, PdfWriter
+import fitz  # PyMuPDF: render PDF pages to their visible appearance
 import rsa_core
 
 
@@ -19,48 +20,59 @@ def compute_sha256(data_bytes: bytes) -> str:
 
 
 def extract_visual_bytes(file_bytes: bytes, file_type: str) -> bytes:
-    """
-    Mengekstrak representasi visual dokumen secara deterministik:
-    - PDF: Mengikat jumlah halaman, geometri MediaBox, orientasi Rotate,
-           aliran konten visual (/Contents), dan data biner gambar (/XObject).
-           Metadata dokumen (/Info) diabaikan agar token tanda tangan tidak memicu circular collision.
-    - PNG: Standardisasi kanonikal ke ruang warna RGBA sebelum ekstraksi biner piksel mentah.
+    """Return a deterministic representation of the document's visible content.
+
+    - PDF: render every page with fixed settings and hash the rendered RGB pixels.
+      Page annotations are rendered too, so visible markup/images are included.
+      PDF metadata is not part of this representation, avoiding a token/hash loop.
+    - PNG: convert to RGBA and return raw pixel bytes.
     """
     ext = file_type.lower().lstrip(".")
 
     if ext == "pdf":
-        reader = PdfReader(io.BytesIO(file_bytes))
-        visual_stream = bytearray()
+        try:
+            document = fitz.open(stream=file_bytes, filetype="pdf")
+        except Exception as exc:
+            raise ValueError("Dokumen PDF tidak dapat dibaca atau dirender.") from exc
 
-        visual_stream.extend(f"pages:{len(reader.pages)}|".encode("utf-8"))
+        if document.needs_pass:
+            document.close()
+            raise ValueError("PDF terenkripsi dengan kata sandi tidak didukung.")
+        if len(document) == 0:
+            document.close()
+            raise ValueError("Dokumen PDF tidak memiliki halaman.")
 
-        for idx, page in enumerate(reader.pages):
-            mediabox_str = str(page.mediabox) if page.mediabox else "default"
-            rotate_val = str(page.get("/Rotate", 0))
-            visual_stream.extend(f"p{idx}:box:{mediabox_str}:rot:{rotate_val}|".encode("utf-8"))
-
-            contents = page.get_contents()
-            if contents is not None:
-                if isinstance(contents, list):
-                    for c in contents:
-                        if hasattr(c, "get_data"):
-                            visual_stream.extend(c.get_data())
-                elif hasattr(contents, "get_data"):
-                    visual_stream.extend(contents.get_data())
-
-            if hasattr(page, "images"):
-                for img in page.images:
-                    visual_stream.extend(img.data)
-
-        if not visual_stream:
-            raise ValueError("Dokumen PDF tidak memuat visual yang dapat diproses.")
+        # A fixed 2x matrix (144 DPI at PDF's 72-point base) and RGB/no-alpha
+        # make rendering consistent between signing and verification.
+        matrix = fitz.Matrix(2, 2)
+        visual_stream = bytearray(b"PDF-RENDER-RGB-v1\0")
+        try:
+            for idx, page in enumerate(document):
+                pix = page.get_pixmap(
+                    matrix=matrix,
+                    colorspace=fitz.csRGB,
+                    alpha=False,
+                    annots=True,
+                )
+                # Add page index and dimensions to prevent ambiguous concatenation.
+                visual_stream.extend(
+                    f"page:{idx};width:{pix.width};height:{pix.height};channels:{pix.n}\0".encode("ascii")
+                )
+                visual_stream.extend(pix.samples)
+                visual_stream.extend(b"\0END-PAGE\0")
+        except Exception as exc:
+            raise ValueError("Gagal merender tampilan visual dokumen PDF.") from exc
+        finally:
+            document.close()
 
         return bytes(visual_stream)
 
     if ext == "png":
         with Image.open(io.BytesIO(file_bytes)) as img:
             canonical_img = img.convert("RGBA")
-            return canonical_img.tobytes()
+            # Include dimensions and a format marker to make the representation unambiguous.
+            header = f"PNG-RGBA-v1;width:{canonical_img.width};height:{canonical_img.height}\0".encode("ascii")
+            return header + canonical_img.tobytes()
 
     raise ValueError(f"Tipe file tidak didukung: {file_type}")
 
