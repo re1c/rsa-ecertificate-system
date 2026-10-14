@@ -3,6 +3,9 @@ rsa_core.py
 Modul Kriptografi Kunci Publik RSA Manual (Murni Tanpa Library Kriptografi Eksternal)
 """
 
+import random
+
+
 def is_prime(num: int) -> bool:
     """Uji bilangan prima manual menggunakan metode Trial Division."""
     if num < 2:
@@ -17,6 +20,17 @@ def is_prime(num: int) -> bool:
             return False
         i += 6
     return True
+
+
+def generate_random_prime(min_val: int = 1000, max_val: int = 5000) -> int:
+    """
+    Mencari satu bilangan prima acak dalam rentang nilai tertentu
+    menggunakan metode sampling bilangan ganjil dan pengujian is_prime manual.
+    """
+    while True:
+        candidate = random.randrange(min_val | 1, max_val, 2)
+        if is_prime(candidate):
+            return candidate
 
 
 def gcd(a: int, b: int) -> int:
@@ -151,7 +165,7 @@ def get_chunk_byte_size(n: int) -> int:
     return max(1, byte_size)
 
 
-def encrypt_payload(payload_str: str, e: int, n: int) -> dict:
+def encrypt_payload(payload_str: str, key_exp: int, n: int) -> dict:
     """
     Enkripsi string payload menjadi token segel RSA per blok numerik.
     """
@@ -165,7 +179,7 @@ def encrypt_payload(payload_str: str, e: int, n: int) -> dict:
     for i in range(0, len(padded_bytes), chunk_size):
         chunk = padded_bytes[i:i + chunk_size]
         m_int = int.from_bytes(chunk, byteorder="big")
-        c_int = mod_pow(m_int, e, n)
+        c_int = mod_pow(m_int, key_exp, n)
         plain_blocks.append(m_int)
         cipher_blocks.append(c_int)
 
@@ -180,7 +194,7 @@ def encrypt_payload(payload_str: str, e: int, n: int) -> dict:
     }
 
 
-def decrypt_payload(token_str: str, d: int, n: int) -> dict:
+def decrypt_payload(token_str: str, key_exp: int, n: int) -> dict:
     """
     Dekripsi token cipher kembali ke teks payload asli dengan penanganan anomali format.
     """
@@ -196,7 +210,7 @@ def decrypt_payload(token_str: str, d: int, n: int) -> dict:
         decrypted_blocks = []
 
         for c_int in cipher_blocks:
-            m_int = mod_pow(c_int, d, n)
+            m_int = mod_pow(c_int, key_exp, n)
             decrypted_blocks.append(m_int)
             chunk_bytes = m_int.to_bytes(chunk_size, byteorder="big")
             reconstructed_bytes.extend(chunk_bytes)

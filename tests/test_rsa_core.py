@@ -1,6 +1,7 @@
 import pytest
 from rsa_core import (
     is_prime,
+    generate_random_prime,
     gcd,
     find_d,
     generate_keypair,
@@ -10,22 +11,24 @@ from rsa_core import (
 
 
 def test_is_prime_boundaries():
-    # test angka negatif, nol, dan satu bukan prima
     assert is_prime(-7) is False
     assert is_prime(0) is False
     assert is_prime(1) is False
-    
-    # prima terkecil dan prima ganjil
     assert is_prime(2) is True
     assert is_prime(3) is True
     assert is_prime(17) is True
     assert is_prime(101) is True
     assert is_prime(1009) is True
-    
-    # Komposit genap dan ganjil
     assert is_prime(4) is False
     assert is_prime(9) is False
     assert is_prime(100) is False
+
+
+def test_generate_random_prime():
+    for _ in range(5):
+        val = generate_random_prime(1000, 3000)
+        assert is_prime(val) is True
+        assert 1000 <= val <= 3000
 
 
 def test_gcd():
@@ -36,7 +39,6 @@ def test_gcd():
 
 
 def test_find_d():
-    # Contoh kasus: e = 7, totient_n = 120 -> 7 * d mod 120 == 1
     d, k = find_d(7, 120)
     assert (7 * d) % 120 == 1
     assert k == (7 * d - 1) // 120
@@ -51,26 +53,21 @@ def test_generate_keypair():
 
 
 def test_generate_keypair_validations():
-    # Menolak input non-prima
     with pytest.raises(ValueError):
         generate_keypair(10, 20)
 
-    # Menolak prima identik (p == q)
     with pytest.raises(ValueError):
         generate_keypair(17, 17)
 
-    # Menolak modulus n terlalu kecil untuk encoding byte
     with pytest.raises(ValueError):
         generate_keypair(3, 5)
 
-    # Menolak preferred_e di luar batas 1 < e < totient(n)
     with pytest.raises(ValueError):
         generate_keypair(61, 53, preferred_e=1)
 
     with pytest.raises(ValueError):
         generate_keypair(61, 53, preferred_e=4000)
 
-    # Menolak preferred_e yang tidak relatif prima terhadap totient(n)
     with pytest.raises(ValueError):
         generate_keypair(61, 53, preferred_e=6)
 

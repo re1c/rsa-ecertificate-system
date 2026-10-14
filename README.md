@@ -1,6 +1,6 @@
 # RSA-Based E-Certificate Issuance and Verification System
 
-Implementasi sistem penerbitan dan verifikasi keabsahan dokumen e-sertifikat digital berbasis tanda tangan digital RSA manual murni tanpa dependensi pustaka kriptografi eksternal.
+Implementasi sistem penerbitan dan verifikasi keabsahan dokumen e-sertifikat digital berbasis tanda tangan digital RSA manual, tanpa dependensi pustaka kriptografi pihak ketiga.
 
 ## Kelompok 17 - Kriptografi (A)
 * Naswan Nashir Ramadhan (5025231246)
@@ -8,31 +8,41 @@ Implementasi sistem penerbitan dan verifikasi keabsahan dokumen e-sertifikat dig
 * Az Zahrra Tasya Adelia (5027241087)
 
 ## Arsitektur Tanda Tangan Digital RSA
-Sistem mengadopsi mekanisme *single verifiable document* dengan menyematkan token tanda tangan kriptografis ke dalam metadata internal berkas (`.pdf` / `.png`) tanpa mengubah representasi visualnya:
+Sistem mengadopsi mekanisme single verifiable document dengan menyematkan token tanda tangan kriptografis langsung ke dalam metadata internal berkas (.pdf atau .png) tanpa mengubah representasi visualnya:
 
-1. **Issuer (Otoritas Penerbit)**:
-   - Mengekstrak data visual murni dokumen dan menghitung ringkasan SHA-256 (`visual_hash`).
-   - Menggabungkan hash dengan batas waktu kedaluwarsa (`payload = visual_hash + "|" + expiry_date`).
-   - Menandatangani payload secara matematis menggunakan **Kunci Privat ($d, n$)**: $c_i = m_i^d \pmod n$.
-   - Menyuntikkan string tanda tangan ke metadata internal berkas (`/RSA_Token`) dan menghasilkan output berkas bertanda tangan (`[nama]_signed.[ext]`).
+1. **Penerbitan (Issuer)**:
+   - Mengekstrak representasi visual dokumen secara deterministik (rendering halaman PDF ke RGB pixmap via PyMuPDF atau ekstraksi biner RGBA pada PNG).
+   - Menghitung ringkasan SHA-256 dari representasi visual (visual_hash).
+   - Menyusun string muatan: payload = visual_hash + "|" + expiry_date.
+   - Mengonversi payload ke representasi byte, menambahkan padding PKCS#7 manual, memecahnya ke dalam blok integer m_i < n, lalu menandatanganinya menggunakan Kunci Privat Otoritas (d, n):
+     $$c_i = m_i^d \pmod n$$
+   - Menggabungkan deretan blok ciphertext c_i menjadi token string dan menyuntikkannya ke metadata dokumen (/RSA_Token).
 
-2. **Verifier (Verifikasi Publik)**:
-   - Mengekstrak token tanda tangan dari metadata internal berkas.
-   - Memulihkan muatan payload secara matematis menggunakan **Kunci Publik Otoritas ($e, n$)**: $m_i = c_i^e \pmod n$.
-   - Menghitung ulang nilai hash visual dokumen yang diunggah.
-   - Menguji integritas data dan tanggal kedaluwarsa secara terprogram (**VERIFIED**, **TAMPERED**, **EXPIRED**, atau **UNSIGNED**).
+2. **Verifikasi Publik (Verifier)**:
+   - Mengekstrak token /RSA_Token dari metadata internal berkas.
+   - Memulihkan muatan payload secara matematis menggunakan Kunci Publik Otoritas (e, n):
+     $$m_i = c_i^e \pmod n$$
+   - Menghitung ulang hash visual dari berkas yang diunggah.
+   - Menguji keabsahan dokumen berdasarkan 4 klasifikasi status:
+     - **VERIFIED**: Tanda tangan sah secara matematis, hash visual cocok, dan masa berlaku dokumen aktif.
+     - **TAMPERED**: Konten visual dimanipulasi, nilai token rusak, atau kunci publik verifikator tidak cocok.
+     - **EXPIRED**: Tanda tangan sah, namun batas waktu kedaluwarsa dokumen telah terlewati.
+     - **UNSIGNED**: Berkas tidak memiliki metadata segel resmi.
 
-## Spesifikasi Modul
-* `rsa_core.py`: Modul matematika RSA manual (Extended Euclidean Algorithm, modul exponentiation square-and-multiply, serta penanganan byte chunking Big-Endian).
-* `cert_service.py`: Service ekstraksi representasi visual deterministik dan injeksi metadata berkas PDF/PNG.
-* `app.py`: Kerangka fungsional antarmuka berbasis Streamlit.
-* `tests/`: 20 skenario unit testing otomatis.
+## Struktur Berkas dan Artefak Proyek
+* `rsa_core.py`: Modul logika matematika RSA murni (uji prima Trial Division 6k ± 1, generator prima acak, PBB Euclidean, Extended Euclidean Algorithm, eksponensiasi modular Square-and-Multiply, byte chunking, dan padding PKCS#7).
+* `cert_service.py`: Service penanganan representasi visual dokumen dan injeksi metadata berkas PDF/PNG.
+* `app.py`: Antarmuka web interaktif berbasis Streamlit lengkap dengan simulator perhitungan per blok dan laboratorium kalkulasi modular.
+* `cek_metadata.py`: Skrip utilitas CLI sederhana untuk memeriksa keberadaan dan isi token metadata pada berkas PDF.
+* `Laporan/`: Dokumen laporan teknis resmi kelompok dalam format .docx dan .pdf.
+* `tests/`: Kumpulan 21 skenario unit test otomatis untuk pengujian logika RSA dan integritas dokumen.
 
 ## Panduan Menjalankan Sistem
 
 1. Persiapan virtual environment dan dependensi:
 ```bash
 python -m venv .venv
+# Windows (PowerShell):
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
@@ -47,11 +57,7 @@ pytest -v
 streamlit run app.py
 ```
 
-## Rencana Pengembangan Lanjutan
-* **Frontend UI/UX (`app.py`)**:
-  - Penataan antarmuka modern dan kartu status visual (hijau untuk *Verified*, merah untuk *Tampered/Expired*).
-  - Penambahan panel edukasi interaktif untuk mensimulasikan tahapan perhitungan modular eksponensiasi per blok ($m_i \rightarrow c_i$) saat presentasi demo kelas.
-  - Komponen pratinjau dokumen (*PDF viewer* / *image preview*) sebelum dan sesudah verifikasi.
-* **Laporan & Sampel Pengujian**:
-  - Penyusunan dokumen laporan teknis dan pembahasan perhitungan matematis RSA.
-  - Penyediaan berkas sertifikat tiruan di direktori `samples/` untuk bahan demonstrasi pengujian (skenario valid, manipulasi visual, dan kedaluwarsa).
+4. Menjalankan skrip cek metadata (opsional):
+```bash
+python cek_metadata.py
+```

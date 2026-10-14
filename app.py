@@ -1,21 +1,11 @@
 """
 app.py
 Antarmuka Streamlit - Sistem Pengesahan & Verifikasi E-Sertifikat Digital RSA
-
-Fitur UI:
-  - Kartu status berwarna (VERIFIED / TAMPERED / EXPIRED / UNSIGNED) + daftar pemeriksaan.
-  - Panel edukasi: tahapan pembangkitan kunci dan perhitungan modular eksponensiasi per blok
-    (m_i -> c_i saat penerbitan, c_i -> m_i saat verifikasi).
-  - Pratinjau dokumen (PNG / PDF) sebelum & sesudah penandatanganan / verifikasi.
-  - Pembangkit bilangan prima acak pada UI memanfaatkan pengujian rsa_core.is_prime().
-  - Hasil disimpan di st.session_state sehingga tidak hilang saat tombol unduh ditekan.
-
-Backend (rsa_core.py, cert_service.py) murni tanpa library kriptografi.
+Kelompok 17 - Kriptografi (A)
 """
 
 import html
 import io
-import random
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -33,7 +23,7 @@ from rsa_core import generate_keypair
 
 st.set_page_config(page_title="E-Certificate RSA System", page_icon="🔐", layout="wide")
 
-MAX_PRIME_INPUT = 10**13   # batas aman uji prima trial division (backend)
+MAX_PRIME_INPUT = 10**13
 STATUS_STYLE = {
     "VERIFIED": ("s-verified", "✔", "Dokumen sah"),
     "TAMPERED": ("s-tampered", "✖", "Dokumen dimanipulasi / segel tidak valid"),
@@ -42,7 +32,7 @@ STATUS_STYLE = {
 }
 
 # ----------------------------------------------------------------------------
-# CSS
+# CSS Styling
 # ----------------------------------------------------------------------------
 CSS = """
 <style>
@@ -79,7 +69,7 @@ CSS = """
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ----------------------------------------------------------------------------
-# State
+# Session State
 # ----------------------------------------------------------------------------
 for _k, _v in {
     "rsa_keypair": None, "issue_result": None, "verify_result": None,
@@ -92,7 +82,7 @@ keys = st.session_state["rsa_keypair"]
 
 
 # ----------------------------------------------------------------------------
-# Helper murni (tidak mengubah logika kriptografi backend)
+# Fungsi Pembantu Antarmuka
 # ----------------------------------------------------------------------------
 def parse_int(text: str, label: str) -> int:
     cleaned = str(text).strip().replace(" ", "").replace(",", "").replace("_", "")
@@ -124,7 +114,6 @@ def euclid_chain(a: int, b: int):
 
 
 def modpow_trace(base: int, exp: int, mod: int):
-    """Jejak square-and-multiply (urutan sama dengan rsa_core.mod_pow: bit terendah dulu)."""
     result, b, e, i, rows = 1, base % mod, exp, 0, []
     while e > 0:
         bit = e & 1
@@ -138,7 +127,6 @@ def modpow_trace(base: int, exp: int, mod: int):
 
 
 def render_modpow(base: int, exp: int, mod: int, sym_base: str, sym_exp: str, sym_out: str):
-    """Tampilkan satu perhitungan modular eksponensiasi secara edukatif."""
     result, rows = modpow_trace(base, exp, mod)
     assert result == rsa_core.mod_pow(base, exp, mod)
     st.markdown(f"**{sym_out} = {sym_base}^{sym_exp} mod n**")
@@ -179,7 +167,6 @@ def parse_token(token: str):
 
 
 def make_sample_certificate(name: str, title: str) -> bytes:
-    """Sertifikat PNG polos untuk demo (tanpa perlu menyiapkan berkas)."""
     w, h = 1200, 850
     img = Image.new("RGB", (w, h), (252, 250, 243))
     d = ImageDraw.Draw(img)
@@ -268,15 +255,10 @@ def apply_preset(p: int, q: int, e: str):
 
 
 def apply_random_primes():
-    """Mencari pasangan bilangan prima p dan q acak valid memanfaatkan uji rsa_core.is_prime()."""
-    while True:
-        p = random.randrange(1001, 5000, 2)
-        if rsa_core.is_prime(p):
-            break
-    while True:
-        q = random.randrange(1001, 5000, 2)
-        if q != p and rsa_core.is_prime(q):
-            break
+    p = rsa_core.generate_random_prime(1000, 5000)
+    q = rsa_core.generate_random_prime(1000, 5000)
+    while q == p:
+        q = rsa_core.generate_random_prime(1000, 5000)
     st.session_state["kp_p"], st.session_state["kp_q"], st.session_state["kp_e"] = p, q, ""
 
 
@@ -298,19 +280,18 @@ with st.sidebar:
         st.rerun()
     with st.expander("Catatan mode demo"):
         st.markdown(
-            "- Ukuran kunci kecil dipakai agar perhitungan bisa dilacak manual. **Kunci sekecil ini tidak aman** "
-            "dan hanya untuk pembelajaran.\n"
-            "- Kunci privat sengaja ditampilkan untuk tujuan edukasi.\n"
-            "- Dokumen dianggap sah hanya jika diverifikasi dengan **kunci publik penerbit yang sama**."
+            "- Ukuran kunci didesain optimal agar seluruh tahapan perhitungan modular dapat diamati secara interaktif.\n"
+            "- Kunci privat ditampilkan secara transparan khusus untuk keperluan pembelajaran akademis.\n"
+            "- Dokumen dinyatakan sah hanya jika diverifikasi menggunakan pasangan kunci publik dari otoritas penerbit yang sesuai."
         )
 
 # ----------------------------------------------------------------------------
-# Header + stepper
+# Header + Stepper
 # ----------------------------------------------------------------------------
 st.markdown('<div class="hero"><h1>Sistem Pengesahan E-Sertifikat RSA</h1>'
             '<p>Tanda tangan digital RSA manual: kunci privat menandatangani, kunci publik memverifikasi.</p></div>',
             unsafe_allow_html=True)
-stepper_slot = st.empty()   # diisi di akhir skrip agar langkah selalu mutakhir
+stepper_slot = st.empty()
 
 tab_keys, tab_issue, tab_verify, tab_learn = st.tabs(
     ["🔑 Kunci Otoritas", "✍️ Penerbitan", "🔍 Verifikasi", "📘 Alur & Lab Rumus"])
@@ -323,7 +304,7 @@ with tab_keys:
     col_in, col_out = st.columns([1, 1.6], gap="large")
 
     with col_in:
-        st.caption("Gunakan nilai acak, masukkan sendiri, atau pilih contoh materi.")
+        st.caption("Gunakan nilai acak, masukkan sendiri, atau pilih contoh materi kuliah.")
         b1, b2, b3 = st.columns(3)
         b1.button("Contoh materi", on_click=apply_preset, args=(47, 71, "79"), width="stretch", help="p=47, q=71, e=79 (contoh Alice di slide)")
         b2.button("Bawaan", on_click=apply_preset, args=(1009, 1013, ""), width="stretch", help="Kembali ke nilai awal p=1009, q=1013")
@@ -378,7 +359,7 @@ with tab_keys:
                 st.code(f"k = {k['k']}\nd = (1 + {k['k']} × {k['totient']}) / {k['e']} = {k['d']}\n"
                         f"cek: e·d mod Φ(n) = {(k['e'] * k['d']) % k['totient']}", language="text")
                 if k["k"] <= 150:
-                    with st.expander("Lihat percobaan nilai k (seperti di materi)"):
+                    with st.expander("Lihat percobaan nilai k (seperti di materi perkuliahan)"):
                         trial = []
                         for kk in range(1, k["k"] + 1):
                             num = 1 + kk * k["totient"]
@@ -644,12 +625,10 @@ with tab_learn:
 
 
 # ----------------------------------------------------------------------------
-# Stepper (dirender terakhir supaya mencerminkan state terbaru pada run ini)
+# Stepper
 # ----------------------------------------------------------------------------
 _done = [bool(st.session_state["rsa_keypair"]), bool(st.session_state["issue_result"]), bool(st.session_state["verify_result"])]
 _pills = "".join(
     f'<div class="step-pill {"done" if d else ""}"><span class="dot">{"✔" if d else i + 1}</span>{lbl}</div>'
     for i, (d, lbl) in enumerate(zip(_done, ["Bangkitkan kunci", "Terbitkan & tandatangani", "Verifikasi dokumen"])))
 stepper_slot.markdown(f'<div class="stepper">{_pills}</div>', unsafe_allow_html=True)
-
-
